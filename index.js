@@ -13,8 +13,6 @@ const blogSchema = new mongoose.Schema({
 
 const Blog = mongoose.model("Blog", blogSchema);
 
-const mongoUrl =
-  "mongodb+srv://tommimaki97:Salis123@bloglist.yxlyriq.mongodb.net/?retryWrites=true&w=majority";
 mongoose.connect(mongoUrl);
 
 app.use(cors());
