@@ -1,4 +1,10 @@
 const listHelper = require("../utils/list_helper");
+const mongoose = require("mongoose");
+const supertest = require("supertest");
+const app = require("../app");
+const Blog = require("../models/blog");
+
+const api = supertest(app);
 
 const blogs = [
   {
@@ -20,6 +26,128 @@ const blogs = [
     likes: 10,
   },
 ];
+
+describe("Api tests", () => {
+  test("blogs are returned as json", async () => {
+    const response = await api
+      .get("/api/blogs")
+      .expect(200)
+      .expect("Content-Type", /application\/json/);
+    console.log(response.body);
+  });
+
+  test("returns correct amount of blogs", async () => {
+    // Retrieve blogs from MongoDB database using Mongoose
+    const blogsInDB = await Blog.find({});
+
+    // Retrieve blogs from API endpoint
+    const response = await api
+      .get("/api/blogs/")
+      .expect(200)
+      .expect("Content-Type", /application\/json/);
+
+    // Compare the length of the blogs returned by the API against the length of the blogs in the database
+    expect(response.body.length).toBe(blogsInDB.length);
+  });
+
+  test("blog posts have the unique identifier property named 'id'", async () => {
+    const response = await api
+      .get("/api/blogs")
+      .expect(200)
+      .expect("Content-Type", /application\/json/);
+
+    expect(response.body[0].id).toBeDefined();
+  });
+
+  test("a new blog post is created successfully", async () => {
+    const initialBlogs = await api.get("/api/blogs");
+    const newBlog = {
+      title: "New Blog Post",
+      author: "John Doe",
+      url: "https://example.com/new-blog",
+      likes: 5,
+    };
+
+    await api
+      .post("/api/blogs")
+      .send(newBlog)
+      .expect(201)
+      .expect("Content-Type", /application\/json/);
+
+    const updatedBlogs = await api.get("/api/blogs");
+    expect(updatedBlogs.body).toHaveLength(initialBlogs.body.length + 1);
+
+    const titles = updatedBlogs.body.map((blog) => blog.title);
+    expect(titles).toContain("New Blog Post");
+  });
+
+  test("likes default to 0 if missing from request", async () => {
+    const newBlog = {
+      title: "Test Blog",
+      author: "John Doe",
+      url: "https://testblog.com",
+    };
+
+    const response = await api.post("/api/blogs").send(newBlog);
+    expect(response.status).toBe(201);
+    expect(response.body.likes).toBe(0);
+  });
+
+  test("returns 400 Bad Request if title is missing", async () => {
+    const newBlog = {
+      author: "John Doe",
+      url: "https://testblog.com",
+      likes: 5,
+    };
+
+    const response = await api.post("/api/blogs").send(newBlog);
+    expect(response.status).toBe(400);
+  });
+
+  test("returns 400 Bad Request if url is missing", async () => {
+    const newBlog = {
+      title: "Test Blog",
+      author: "John Doe",
+      likes: 5,
+    };
+
+    const response = await api.post("/api/blogs").send(newBlog);
+    expect(response.status).toBe(400);
+  });
+  test("delete a blog post", async () => {
+    const newBlog = {
+      title: "Test Blog",
+      author: "John Doe",
+      url: "https://testblog.com",
+      likes: 5,
+    };
+    const initialBlogs = await api.get("/api/blogs");
+    const response = await api.post("/api/blogs").send(newBlog);
+    const blogId = response.body.id;
+
+    await api.delete(`/api/blogs/${blogId}`).expect(204);
+    const blogs = await Blog.find({});
+    expect(blogs).toHaveLength(initialBlogs.body.length);
+  });
+
+  test("update a blog post", async () => {
+    const initialBlogs = await api.get("/api/blogs");
+    const blogToUpdate = initialBlogs.body[0];
+    const updatedBlogData = {
+      ...blogToUpdate,
+      likes: blogToUpdate.likes + 1,
+    };
+
+    const response = await api
+      .put(`/api/blogs/${blogToUpdate.id}`)
+      .send(updatedBlogData)
+      .expect(200)
+      .expect("Content-Type", /application\/json/);
+
+    expect(response.body.likes).toBe(blogToUpdate.likes + 1);
+  });
+});
+
 test("dummy returns one", () => {
   const result = listHelper.dummy(blogs);
   expect(result).toBe(1);
@@ -151,4 +279,8 @@ describe("most likes", () => {
     const result = listHelper.mostLikes(blogsWithTie);
     expect(result).toEqual({ author: "Edsger W. Dijkstra", likes: 15 });
   });
+});
+
+afterAll(async () => {
+  await mongoose.connection.close();
 });
